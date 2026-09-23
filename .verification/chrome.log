@@ -1,0 +1,4 @@
+[32060:4392:0922/213533.783:ERROR:chrome\installer\util\google_update_settings_win.cc:270] Failed opening key Software\Google\Update\ClientStateMedium\{8A69D345-D564-463c-AFF1-A69D9E530F96} to set usagestats; result: 5
+[32060:33848:0922/213537.117:ERROR:services\device\public\cpp\geolocation\system_geolocation_source_win.cc:251] Failed to get location access status: Параметр задан неверно. (0x80070057)
+1823059 bytes written to file C:/Users/ddemo/Desktop/джем,сны/.verification/review.png
+[32060:33644:0922/213538.263:ERROR:chrome\browser\web_applications\externally_managed_app_manager.cc:680] https://docs.google.com/presentation/installwebapp?usp=chrome_default from install source 1 failed to install with reason 21

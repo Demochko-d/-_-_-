@@ -1,0 +1,6 @@
+Bezmiar Cyrillic
+Copyright (c) 2025, Adam Falkowski OHWOW Design Co. (halo@ohwow.pl),
+(c) 2025 Cyrillic set by Denis Ignatov.
+
+Mariinavo
+Copyright Marina Voronina. See COPYRIGHT.txt in this directory.

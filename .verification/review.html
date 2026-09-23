@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+  <head><base href="../">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Portal Guard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <!-- Классические скрипты выбраны, чтобы проект работал прямо через file://. -->
+    <script defer src="js/app.js"></script>
+    <script defer src="js/config/gameConfig.js"></script>
+    <script defer src="js/utils/EventBus.js"></script>
+    <script defer src="js/utils/MathUtils.js"></script>
+    <script defer src="js/audio/AudioManager.js"></script>
+    <script defer src="js/animation/easing.js"></script>
+    <script defer src="js/animation/Tween.js"></script>
+    <script defer src="js/animation/AnimationController.js"></script>
+    <script defer src="js/animation/AnimationStateMachine.js"></script>
+    <script defer src="js/animation/characters/PlayerAnimations.js"></script>
+    <script defer src="js/animation/characters/GhostAnimations.js"></script>
+    <script defer src="js/animation/characters/BigGhostAnimations.js"></script>
+    <script defer src="js/core/InputManager.js"></script>
+    <script defer src="js/core/SceneManager.js"></script>
+    <script defer src="js/core/LevelManager.js"></script>
+    <script defer src="js/core/ProgressManager.js"></script>
+    <script defer src="js/core/Game.js"></script>
+    <script defer src="js/entities/Entity.js"></script>
+    <script defer src="js/entities/Player.js"></script>
+    <script defer src="js/entities/Enemy.js"></script>
+    <script defer src="js/entities/Portal.js"></script>
+    <script defer src="js/renderers/PlayerRenderer.js"></script>
+    <script defer src="js/renderers/effects/DeathDissolveRenderer.js"></script>
+    <script defer src="js/renderers/characters/GhostVisual.js"></script>
+    <script defer src="js/renderers/characters/BigGhostVisual.js"></script>
+    <script defer src="js/renderers/EnemyRenderer.js"></script>
+    <script defer src="js/renderers/PortalRenderer.js"></script>
+    <script defer src="js/renderers/DreamBackgroundRenderer.js"></script>
+    <script defer src="js/renderers/TerrainRenderer.js"></script>
+    <script defer src="js/renderers/MushroomDecorRenderer.js"></script>
+    <script defer src="js/systems/CollisionSystem.js"></script>
+    <script defer src="js/systems/SpawnSystem.js"></script>
+    <script defer src="js/systems/CombatSystem.js"></script>
+    <script defer src="js/systems/ParticleSystem.js"></script>
+    <script defer src="js/ui/HUD.js"></script>
+    <script defer src="js/levels/level1.js"></script>
+    <script defer src="js/levels/level2.js"></script>
+    <script defer src="js/scenes/MainMenuScene.js"></script>
+    <script defer src="js/scenes/LevelSelectScene.js"></script>
+    <script defer src="js/scenes/GameScene.js"></script>
+    
+  </head>
+  <body><main id="app"></main>
+<script>
+window.addEventListener('load', async () => {
+ try {
+ const game = new GameApp.core.Game(document.querySelector('#app'));
+ game.sceneManager.change(GameApp.scenes.GameScene, 'level1');
+ const scene = game.sceneManager.current;
+ await Promise.all([scene.background.asset.decode(),scene.mushroomDecor.image.decode()]);
+ scene.background.time = 2; scene.terrain.time = 2;
+ scene.draw(game.ctx);
+ const ctx = game.ctx;
+ ctx.fillStyle = 'rgba(27,27,49,0.88)'; ctx.fillRect(380, 70, 960, 225);
+ ctx.font = '22px system-ui'; ctx.fillStyle = '#fff5dd'; ctx.fillText('Распад силуэта: 0% → 20% → 45% → 70% → 100%', 410, 105);
+ for (const [i,p] of [0,.2,.45,.7,1].entries()) {
+   const ghost = new GameApp.entities.Enemy(i % 2 ? 'brute' : 'runner', {x: 430+i*180, y: 155, scale: 2});
+   ghost.animation.time = 2;
+   ghost.deathPose = {scaleX: 1.03, scaleY: .97, rotation: .03};
+   const visual = i % 2 ? GameApp.renderers.characters.BigGhostVisual : GameApp.renderers.characters.GhostVisual;
+   GameApp.renderers.effects.DeathDissolveRenderer.drawShattered(ctx,ghost,p,visual);
+ }
+ const assertions = [];
+ function check(v,msg) { if(!v) throw Error(msg); assertions.push(msg); }
+ for(const kind of ['runner','brute']) {
+   const enemy = new GameApp.entities.Enemy(kind,{x: 100,y: 100,scale: 2});
+   const visual = kind === 'brute' ? GameApp.renderers.characters.BigGhostVisual : GameApp.renderers.characters.GhostVisual;
+   enemy.animation.time = 2; enemy.deathPose = {};
+   const a = document.createElement('canvas'); a.width=300;a.height=300;
+   const b = a.cloneNode();
+   visual.draw(a.getContext('2d'),enemy,{});
+   GameApp.renderers.effects.DeathDissolveRenderer.drawShattered(b.getContext('2d'),enemy,0,visual);
+   const pa=a.getContext('2d').getImageData(0,0,300,300).data;
+   const pb=b.getContext('2d').getImageData(0,0,300,300).data;
+   let difference=0,total=0;
+   for(let j=3;j<pa.length;j+=4){difference+=Math.abs(pa[j]-pb[j]);total+=pa[j];}
+   check(difference/total<.06,kind+' fragments reconstruct silhouette ('+(difference/total).toFixed(3)+')');
+   b.getContext('2d').clearRect(0,0,300,300);
+   GameApp.renderers.effects.DeathDissolveRenderer.drawShattered(b.getContext('2d'),enemy,1,visual);
+   check(!b.getContext('2d').getImageData(0,0,300,300).data.some(v=>v),kind+' fully disappears');
+   enemy.animation.update(.3); enemy.animation.getPose(enemy); enemy.die();
+   check(enemy.deathPose && !enemy.alive,'death captures '+kind);
+   for(let i=0;i<60;i++) enemy.update(1/60,scene.portal,scene.player,scene.collision);
+   check(!enemy.active,'death completes '+kind);
+ }
+ for (const state of ['move','attack','hurt','idle','death']) {
+   scene.player.animation.setState(state);
+   for(let i=0;i<15;i++){scene.player.animation.update(1/60);check(Object.values(scene.player.animation.getPose(scene.player)).every(Number.isFinite),'finite '+state);}
+ }
+ const scratch = document.createElement('canvas');scratch.width=1920;scratch.height=1080;
+ scene.player.health = 100000; scene.portal.health = 100000;
+ for(let i=0;i<1200;i++) { scene.update(1/60); if(i%20===0) scene.draw(scratch.getContext('2d')); }
+ check(scene.enemies.every(e=>Number.isFinite(e.position.x)&&Number.isFinite(e.position.y)), '20 seconds of combat and rendering');
+ scene.player.health=0;scene.player.updateDeathAnimation(.1);scene.player.draw(scratch.getContext('2d'),GameApp.renderers.PlayerRenderer);
+ check(!!scene.player.deathArtwork,'player death snapshot');
+ const result=document.createElement('pre'); result.id='verification'; result.textContent='PASS '+assertions.length+' checks: '+assertions.slice(0,8).join('; ');document.body.append(result);
+ } catch(e){document.body.innerHTML += '<pre id="verification">FAIL '+e.stack+'</pre>';}
+});
+</script></body>
+</html>
