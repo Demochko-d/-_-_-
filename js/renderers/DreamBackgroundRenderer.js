@@ -1,111 +1,90 @@
 "use strict";
 GameApp.renderers.DreamBackgroundRenderer = class {
   constructor() { this.lightning = []; this.time = 0; this.waveFlash = 0; }
-
+  resize(width, height) { this.width = width; this.height = height; }
+  update(dt) { this.time += dt; this.waveFlash = Math.max(0, this.waveFlash - dt); }
   triggerWave() {
     const config = GameApp.config.game.background;
     this.waveFlash = config.waveFlashDuration;
-    this.lightning = Array.from({ length: config.lightningCount }, (_, index) => {
-      const startX = this.width * (0.12 + Math.random() * 0.76);
-      const endY = this.height * (0.42 + Math.random() * 0.28);
-      const points = [{ x: startX, y: -20 }];
-      for (let step = 1; step <= 8; step++) points.push({ x: startX + (Math.random() - 0.5) * this.width * 0.1, y: endY * step / 8 });
-      return { points, delay: index * 0.16 + Math.random() * 0.15, life: 0.12 + Math.random() * 0.1 };
+    this.lightning = Array.from({ length: config.lightningCount }, (_, i) => {
+      const x = this.width * (.12 + Math.random() * .76), y = this.height * (.42 + Math.random() * .28);
+      return { points: Array.from({ length: 9 }, (_, j) => ({ x: x + (Math.random() - .5) * this.width * .07, y: y * j / 8 })), delay: i * .16, life: .2 };
     });
   }
-
-  resize(width, height) {
-    this.width = width;
-    this.height = height;
-  }
-
-  update(dt) {
-    this.time += dt;
-    this.waveFlash = Math.max(0, this.waveFlash - dt);
-  }
-
-  draw(ctx, width, height) {
-    const config = GameApp.config.game.background;
-    ctx.save();
-    ctx.fillStyle = config.solidColor; ctx.fillRect(0, 0, width, height);
-    this.drawWaveStorm(ctx, width, height);
+  cloud(ctx, x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.fillStyle = "#fff0df"; ctx.strokeStyle = "#dba9c1"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(-90, 18);
+    ctx.bezierCurveTo(-115, -12, -71, -42, -46, -25);
+    ctx.bezierCurveTo(-38, -80, 39, -79, 49, -29);
+    ctx.bezierCurveTo(92, -47, 119, 0, 91, 20);
+    ctx.bezierCurveTo(51, 38, -55, 38, -90, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
   }
-
+  draw(ctx, width, height) {
+    const t = this.time;
+    ctx.save();
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, "#e9b6ce"); sky.addColorStop(.5, "#f5d0d2"); sky.addColorStop(1, "#fff0d5");
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+    // Menu colours and star motifs, with slow movement behind the arena.
+    ctx.save(); ctx.translate(width * .76, height * .23 + Math.sin(t * .4) * 5);
+    ctx.rotate(-.22); ctx.fillStyle = "#fff2c5"; ctx.strokeStyle = "#ba83a5"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, height * .082, .6, Math.PI * 1.76);
+    ctx.bezierCurveTo(-height * .012, -height * .036, -height * .027, height * .034, height * .068, height * .046);
+    ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore();
+    for (let i = 0; i < 24; i++) {
+      const x = width * ((i * .6180339 + .12) % 1), y = height * (.1 + ((i * .381966) % 1) * .49);
+      const r = (4 + i % 3 * 3) * (.85 + Math.sin(t * .9 + i) * .15);
+      ctx.save(); ctx.translate(x, y + Math.sin(t * .45 + i) * 4); ctx.rotate(Math.PI / 4);
+      ctx.globalAlpha = .38 + Math.sin(t * .7 + i) * .17;
+      ctx.fillStyle = i % 3 ? "#fff8e5" : "#b776a0";
+      ctx.beginPath(); ctx.roundRect(-r / 2, -r / 2, r, r, 2); ctx.fill(); ctx.restore();
+    }
+    const cloudTracks = [
+      { start: -.08, y: .24, scale: .65, speed: .018 },
+      { start: .18, y: .34, scale: .92, speed: .012 },
+      { start: .47, y: .21, scale: 1.18, speed: .009 },
+      { start: .71, y: .38, scale: .78, speed: .015 },
+      { start: .91, y: .28, scale: .7, speed: .021 }
+    ];
+    cloudTracks.forEach((cloud, i) => {
+      const margin = 150 * cloud.scale;
+      const travel = width + margin * 2;
+      const x = -margin + ((width * cloud.start + t * width * cloud.speed + margin) % travel + travel) % travel;
+      const y = height * cloud.y + Math.sin(t * .28 + i * 1.7) * 5;
+      this.cloud(ctx, x, y, cloud.scale);
+    });
+    for (let layer = 0; layer < 2; layer++) {
+      const base = height * (.72 + layer * .08);
+      ctx.fillStyle = layer ? "#ba9ac6" : "#d6afd0"; ctx.strokeStyle = layer ? "#aa8ab8" : "#c79cc1"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-10, height); ctx.lineTo(-10, base);
+      for (let i = 0; i < 6; i++) {
+        const x = i * width / 5, drift = Math.sin(t * .13 + i + layer) * 6;
+        ctx.bezierCurveTo(x + width * .04, base - height * .23 + drift, x + width * .13, base - height * .23, x + width * .2, base);
+      }
+      ctx.lineTo(width + 10, height); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    for (let i = 0; i < 3; i++) {
+      const x = width * (.17 + i * .32), y = height * (.44 + i % 2 * .07) + Math.sin(t * .55 + i * 2) * 8;
+      ctx.fillStyle = "#be91bc"; ctx.strokeStyle = "#a980ae"; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x - 39, y); ctx.bezierCurveTo(x - 28, y + 42, x + 20, y + 42, x + 39, y); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ecd2df"; ctx.beginPath(); ctx.ellipse(x, y, 40, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+    this.drawWaveStorm(ctx, width, height); ctx.restore();
+  }
   drawWaveStorm(ctx, width, height) {
     if (this.waveFlash <= 0) return;
-    const duration = GameApp.config.game.background.waveFlashDuration;
-    const elapsed = duration - this.waveFlash;
-    const fade = Math.min(1, this.waveFlash / 0.75);
-    const pulse = 0.7 + Math.sin(elapsed * 9) * 0.18;
-    const red = ctx.createRadialGradient(width * 0.5, height * 0.4, 0, width * 0.5, height * 0.4, width * 0.8);
-    red.addColorStop(0, `rgba(255,45,91,${0.2 * fade * pulse})`);
-    red.addColorStop(0.55, `rgba(125,13,54,${0.28 * fade})`);
-    red.addColorStop(1, `rgba(48,0,23,${0.38 * fade})`);
-    ctx.globalAlpha = 1; ctx.fillStyle = red; ctx.fillRect(0, 0, width, height);
-    this.lightning.forEach((bolt) => {
+    const elapsed = GameApp.config.game.background.waveFlashDuration - this.waveFlash;
+    ctx.save(); ctx.fillStyle = `rgba(167,37,102,${Math.min(1, this.waveFlash / .75) * .17})`; ctx.fillRect(0, 0, width, height);
+    for (const bolt of this.lightning) {
       const age = elapsed - bolt.delay;
-      if (age < 0 || age > bolt.life) return;
-      const alpha = Math.sin((age / bolt.life) * Math.PI);
-      ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = "round"; ctx.lineJoin = "round";
-      ctx.strokeStyle = "#ffbfd7"; ctx.shadowColor = "#ff3d83"; ctx.shadowBlur = 30; ctx.lineWidth = 10;
-      ctx.beginPath(); bolt.points.forEach((point, i) => i ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y)); ctx.stroke();
-      ctx.strokeStyle = "#fff8f1"; ctx.shadowBlur = 8; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
-    });
-  }
-
-  drawAtmosphere(ctx, width, height) {
-    ctx.save(); ctx.shadowBlur = 0;
-    const haze = ctx.createRadialGradient(width * 0.8, height * 0.22, 0, width * 0.8, height * 0.22, width * 0.65);
-    haze.addColorStop(0, "rgba(219,191,238,0.18)"); haze.addColorStop(1, "rgba(106,133,181,0)");
-    ctx.globalAlpha = 1; ctx.fillStyle = haze; ctx.fillRect(0, 0, width, height);
-    for (let i = 0; i < 6; i++) {
-      const x = width * (i * 0.21 - 0.06) + Math.sin(this.time * 0.055 + i * 2) * 22;
-      const y = height * (0.16 + (i % 3) * 0.125);
-      const w = width * (0.12 + (i % 2) * 0.045);
-      const cloud = ctx.createLinearGradient(0, y - 35, 0, y + 28);
-      cloud.addColorStop(0, "rgba(225,204,239,0.19)"); cloud.addColorStop(1, "rgba(140,145,187,0.025)");
-      ctx.fillStyle = cloud; ctx.beginPath(); ctx.moveTo(x - w, y + 12);
-      ctx.bezierCurveTo(x - w, y - 10, x - w * 0.63, y - 19, x - w * 0.42, y - 12);
-      ctx.bezierCurveTo(x - w * 0.35, y - 58, x + w * 0.16, y - 62, x + w * 0.3, y - 20);
-      ctx.bezierCurveTo(x + w * 0.65, y - 35, x + w, y - 8, x + w, y + 13);
-      ctx.bezierCurveTo(x + w * 0.5, y + 33, x - w * 0.7, y + 32, x - w, y + 12); ctx.fill();
+      if (age < 0 || age > bolt.life) continue;
+      ctx.globalAlpha = Math.sin(age / bolt.life * Math.PI); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.strokeStyle = "#de629e"; ctx.lineWidth = 9;
+      ctx.beginPath(); bolt.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      ctx.strokeStyle = "#fff0df"; ctx.lineWidth = 3; ctx.stroke();
     }
-    // Quiet distant hills behind the playable islands.
-    for (let layer = 0; layer < 2; layer++) {
-      ctx.fillStyle = layer ? "rgba(70,89,119,0.18)" : "rgba(96,109,142,0.17)";
-      const base = height * (0.73 + layer * 0.055);
-      ctx.beginPath(); ctx.moveTo(0, height);
-      ctx.lineTo(0, base);
-      for (let x = 0; x < width; x += width / 4) ctx.bezierCurveTo(x + width / 12, base - height * 0.16, x + width / 7, base - height * 0.13, x + width / 4, base);
-      ctx.lineTo(width, height); ctx.closePath(); ctx.fill();
-    }
-    ctx.restore();
-  }
-
-  drawMoon(ctx, x, y, r) {
-    ctx.save(); ctx.globalAlpha = 1; ctx.shadowBlur = 0;
-    const halo = ctx.createRadialGradient(x, y, r * 0.7, x, y, r * 3.2);
-    halo.addColorStop(0, "rgba(252,225,179,0.23)"); halo.addColorStop(0.45, "rgba(235,199,228,0.075)"); halo.addColorStop(1, "rgba(235,199,228,0)");
-    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(x, y, r * 3.2, 0, Math.PI * 2); ctx.fill();
-    const disc = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r * 1.1);
-    disc.addColorStop(0, "#fffbe3"); disc.addColorStop(0.63, "#f6e6bb"); disc.addColorStop(1, "#c9a3a0");
-    ctx.fillStyle = disc; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-    ctx.save(); ctx.clip();
-    for (const [cx, cy, size] of [[-0.36,-0.2,0.2],[0.28,0.35,0.23],[0.43,-0.28,0.12],[-0.14,0.58,0.1],[-0.57,0.27,0.11],[0.07,-0.62,0.075]]) {
-      const px = x + cx * r, py = y + cy * r, cr = size * r;
-      ctx.fillStyle = "rgba(177,142,145,0.2)";
-      ctx.beginPath(); ctx.ellipse(px, py, cr, cr * 0.8, -0.4, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(255,251,221,0.6)"; ctx.lineWidth = r * 0.025;
-      ctx.beginPath(); ctx.ellipse(px, py + cr * 0.1, cr * 0.95, cr * 0.8, -0.4, 0.1, Math.PI * 0.95); ctx.stroke();
-      ctx.fillStyle = "rgba(187,151,145,0.12)";
-      ctx.beginPath(); ctx.ellipse(px - cr * 0.1, py - cr * 0.13, cr * 0.65, cr * 0.47, -0.4, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-    ctx.strokeStyle = "rgba(255,247,211,0.72)"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(x, y, r - 1, 0, Math.PI * 2); ctx.stroke();
-    ctx.strokeStyle = "rgba(255,255,238,0.65)"; ctx.lineWidth = 3; ctx.lineCap = "round";
-    ctx.beginPath(); ctx.arc(x, y, r * 0.9, Math.PI * 1.07, Math.PI * 1.59); ctx.stroke();
     ctx.restore();
   }
 };

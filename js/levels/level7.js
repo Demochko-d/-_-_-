@@ -1,0 +1,40 @@
+"use strict";
+// Уровень автоматически находится загрузчиком по имени файла level7.js.
+GameApp.levels.level7 = {
+  ...GameApp.levels.level1,
+  id: "level7",
+  order: 7,
+  name: "Полуночные огни",
+  reward: 250,
+  waves: [
+    { type: "runner2", count: 12, delay: 1, side: "left", storm: true },
+    { type: "runner3", count: 1, delay: 4.5, side: "left", storm: false },
+    { type: "runner3", count: 1, delay: 3, side: "left", storm: false },
+    { type: "runner3", count: 1, delay: 3, side: "left", storm: false },
+    { type: "brute", count: 1, delay: 7, side: "right", storm: true },
+    { type: "runner", count: 2, delay: 0, side: "right", storm: true },
+    { type: "runner", count: 10, delay: 2, side: "left", storm: true },
+    { type: "splitter", count: 1, delay: 4, side: "left", storm: false },
+    { type: "splitter", count: 1, delay: 3, side: "left", storm: false },
+    { type: "brute", count: 2, delay: 6, side: "left", storm: true },
+    { type: "sniper", count: 3, delay: 3, side: "left", storm: false },
+    { type: "runner", count: 6, delay: 2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 2, side: "right", storm: false },
+    { type: "sniper", count: 3, delay: 7, side: "right", storm: false },
+    { type: "runner", count: 3, delay: 2, side: "right", storm: false },
+    { type: "splitter", count: 3, delay: 11, side: "left", storm: false },
+    { type: "sniper", count: 1, delay: 3, side: "left", storm: false },
+    { type: "runner2", count: 2, delay: 5, side: "right", storm: false },
+    { type: "runner2", count: 9, delay: 12, side: "left", storm: true },
+    { type: "runner2", count: 1, delay: 5, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner2", count: 1, delay: 0.2, side: "left", storm: false },
+    { type: "runner3", count: 1, delay: 4.5, side: "left", storm: false },
+
+  ]
+};

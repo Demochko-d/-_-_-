@@ -15,18 +15,30 @@ GameApp.scenes.GameScene = class {
     this.game.setCanvas();
     this.paused = false;
     this.defeated = false;
-    this.portalAbilityCooldown = GameApp.config.game.portal.abilityCooldown;
+    this.selectedAbility = this.game.progress.data.equippedAbility || "portalWave";
+    this.portalAbilityCooldown = 0;
+    this.healEffectTimer = 0;
     this.portalWaveTimer = 0;
     this.portalWaveRadius = 0;
     this.portalWaveId = 0;
+    this.spawnPortalPulse = { left: 0, right: 0 };
     this.noiseCanvas = document.createElement("canvas");
     this.noiseCanvas.width = 640; this.noiseCanvas.height = 360;
     this.noiseContext = this.noiseCanvas.getContext("2d");
     this.noiseRefreshTimer = 0;
     this.spawner = new GameApp.systems.SpawnSystem(this.level, (number, wave) => {
       if (wave.storm) this.background.triggerWave(number);
-    });
+    }, (side) => { this.spawnPortalPulse[side] = GameApp.config.game.spawn.appearanceDuration; });
     this.resize(this.game.canvas.width, this.game.canvas.height);
+    const equippedAbility = GameApp.config.game.abilities[this.selectedAbility];
+    if (equippedAbility?.portalHealthBonus) {
+      this.portal.maxHealth += equippedAbility.portalHealthBonus;
+      this.portal.health = this.portal.maxHealth;
+    }
+    if (equippedAbility?.playerHealthBonus) {
+      this.player.maxHealth += equippedAbility.playerHealthBonus;
+      this.player.health = this.player.maxHealth;
+    }
     this.createGameFieldUi();
     this.createPortalAbilityButton();
     this.createPauseButton();
@@ -65,6 +77,7 @@ GameApp.scenes.GameScene = class {
     this.portal.position.y = groundY - this.portal.height + shortSide * config.world.portalBurialRatio;
     this.enemies.forEach((enemy) => { enemy.position.x *= ratioX; enemy.position.y *= ratioY; enemy.setScale(scale); });
     this.collision = new GameApp.systems.CollisionSystem(width, groundY, this.platforms);
+    this.mushroomDecor.configure(this.platforms, this.level.decorations || [], scale);
     this.background.resize(width, height);
     if (this.spawner) { this.spawner.entityScale = scale; this.spawner.worldWidth = width; this.spawner.groundY = groundY; }
   }
@@ -77,29 +90,42 @@ GameApp.scenes.GameScene = class {
       return;
     }
     if (this.paused) return;
-    if (this.defeated) { if (this.player.health <= 0) this.player.updateDeathAnimation(dt); return; }
+    if (this.defeated) {
+      if (this.player.health <= 0) this.player.updateDeathAnimation(dt);
+      this.portal.update(dt);
+      this.enemies.filter(enemy => !enemy.alive && enemy.active).forEach(enemy => enemy.update(dt));
+      return;
+    }
     if (this.game.input.consume("portalAbility")) this.usePortalAbility();
     this.particles.update(dt);
     this.animations.update(dt);
     this.background.update(dt);
     this.terrain.update(dt);
-    this.mushroomDecor.update(dt);
     this.portal.update(dt);
+    this.spawnPortalPulse.left = Math.max(0, this.spawnPortalPulse.left - dt);
+    this.spawnPortalPulse.right = Math.max(0, this.spawnPortalPulse.right - dt);
+    this.healEffectTimer = Math.max(0, this.healEffectTimer - dt);
     this.updateCriticalNoise(dt);
     if (!this.completed && this.player.health > 0 && this.portal.health > 0) {
       this.portalAbilityCooldown = Math.max(0, this.portalAbilityCooldown - dt);
     }
     this.updatePortalAbilityButton();
-    if (this.completed) {
-      this.finishTimer -= dt;
-      if (this.finishTimer <= 0) this.game.sceneManager.change(GameApp.scenes.LevelSelectScene);
-      return;
-    }
+    if (this.completed) return;
     if (this.player.health <= 0 || this.portal.health <= 0) { this.showDefeatMenu(); return; }
     this.player.update(dt, this.game.input, this.collision);
+    this.mushroomDecor.update(dt, this.player);
     this.spawner.update(dt, this.enemies);
     this.updatePortalShockwave(dt);
-    this.enemies.filter((enemy) => enemy.active).forEach((enemy) => enemy.update(dt, this.portal, this.player, this.collision));
+    this.enemies.filter((enemy) => enemy.active).forEach((enemy) => {
+      enemy.update(dt, this.portal, this.player, this.collision);
+      if (enemy.kind !== "gigant" || !enemy.isCharging || enemy.isEmerging || enemy.frozen || !enemy.alive) return;
+      enemy.chargeParticleTimer -= dt;
+      if (enemy.chargeParticleTimer > 0) return;
+      const behind = Math.sign(enemy.velocity.x) || enemy.facing;
+      this.particles.burst(enemy.centerX - behind * enemy.width * .45, enemy.position.y + enemy.height * .65, "#e8b8ff", 3);
+      enemy.chargeParticleTimer = .08;
+    });
+    this.enemies.forEach((enemy) => enemy.updateStealth(this.player));
     this.combat.update(dt, this.player, this.enemies, this.portal);
     if (this.player.health <= 0 || this.portal.health <= 0) { this.showDefeatMenu(); return; }
     const splitChildren = [];
@@ -114,7 +140,7 @@ GameApp.scenes.GameScene = class {
     if (this.spawner.isFinished() && this.enemies.length === 0) {
       this.reward = this.game.progress.complete(this.level.id, this.game.levels.nextId(this.level.id));
       this.completed = true;
-      this.finishTimer = GameApp.config.game.progression.completionDelay;
+      this.showVictoryMenu();
       this.game.events.emit("levelCompleted", { level: this.level, reward: this.reward });
     }
   }
@@ -164,6 +190,10 @@ GameApp.scenes.GameScene = class {
     button.innerHTML = '<span aria-hidden="true">Ⅱ</span><b>Пауза</b>';
     button.onclick = () => this.pauseGame();
     this.gameUiLayer.append(button);
+    const caption = document.createElement("div");
+    caption.className = "game-level-caption";
+    caption.textContent = "Уровень " + (this.level.order ?? this.level.id.replace(/\D/g, "")) + " · " + this.level.name;
+    this.gameUiLayer.append(caption);
     this.pauseButton = button;
   }
 
@@ -171,7 +201,7 @@ GameApp.scenes.GameScene = class {
     const overlay = document.createElement("div");
     overlay.className = "game-overlay";
     overlay.hidden = true;
-    overlay.innerHTML = '<section class="game-dialog"><span class="game-dialog__eyebrow"></span><h2 class="game-dialog__title"></h2><p class="game-dialog__text"></p><div class="game-dialog__actions"><button data-action="resume">Продолжить</button><button data-action="restart">Заново</button><button data-action="levels">В меню</button></div></section>';
+    overlay.innerHTML = '<section class="game-dialog"><span class="game-dialog__eyebrow"></span><h2 class="game-dialog__title"></h2><p class="game-dialog__text"></p><p class="game-dialog__reward" hidden></p><div class="game-dialog__actions"><button data-action="resume">Продолжить</button><button data-action="restart">Заново</button><button data-action="levels">В меню</button></div></section>';
     overlay.querySelector('[data-action="resume"]').onclick = () => this.resumeGame();
     overlay.querySelector('[data-action="restart"]').onclick = () => this.restartLevel();
     overlay.querySelector('[data-action="levels"]').onclick = () => this.game.sceneManager.change(GameApp.scenes.LevelSelectScene);
@@ -204,7 +234,7 @@ GameApp.scenes.GameScene = class {
     this.defeated = true;
     this.paused = false;
     if (this.player.health <= 0) this.player.updateDeathAnimation(0);
-    this.portalAbilityButton.hidden = true;
+    if (this.portalAbilityButton) this.portalAbilityButton.hidden = true;
     this.pauseButton.hidden = true;
     this.gameOverlay.hidden = false;
     this.gameOverlay.className = "game-overlay is-defeat";
@@ -214,12 +244,29 @@ GameApp.scenes.GameScene = class {
     this.resumeButton.hidden = true;
   }
 
+  showVictoryMenu() {
+    this.paused = false;
+    if (this.portalAbilityButton) this.portalAbilityButton.hidden = true;
+    this.pauseButton.hidden = true;
+    this.gameOverlay.hidden = false;
+    this.gameOverlay.className = "game-overlay is-victory";
+    this.gameOverlay.querySelector(".game-dialog__eyebrow").textContent = "Портал защищён";
+    this.gameOverlay.querySelector(".game-dialog__title").textContent = "Победа!";
+    this.gameOverlay.querySelector(".game-dialog__text").textContent = "Все кошмары побеждены. Мир может спать спокойно.";
+    const reward = this.gameOverlay.querySelector(".game-dialog__reward");
+    reward.hidden = false;
+    reward.textContent = "✦ Получено монет: " + this.reward;
+    this.resumeButton.hidden = true;
+  }
+
   createPortalAbilityButton() {
+    if (GameApp.config.game.abilities[this.selectedAbility]?.passive) return;
     const button = document.createElement("button");
     button.className = "portal-ability is-cooling";
     button.type = "button";
-    button.setAttribute("aria-label", "Ударная волна портала — Enter");
-    button.innerHTML = '<span class="portal-ability__icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M9 21c8-8 16-8 24 0s16 8 23 0M9 32c8-8 16-8 24 0s16 8 23 0M9 43c8-8 16-8 24 0s16 8 23 0"/></svg></span><span class="portal-ability__shade"></span><span class="portal-ability__time"></span><span class="portal-ability__key">ENTER</span>';
+    button.setAttribute("aria-label", GameApp.config.game.abilities[this.selectedAbility].name);
+    const icon = GameApp.config.game.abilityIcons[this.selectedAbility] || GameApp.config.game.abilityIcons.portalWave;
+    button.innerHTML = '<span class="portal-ability__icon" aria-hidden="true"><svg viewBox="0 0 64 64">' + icon + '</svg></span><span class="portal-ability__shade"></span><span class="portal-ability__time"></span>';
     button.onclick = () => this.usePortalAbility();
     this.gameUiLayer.append(button);
     this.portalAbilityButton = button;
@@ -230,7 +277,7 @@ GameApp.scenes.GameScene = class {
 
   updatePortalAbilityButton() {
     if (!this.portalAbilityButton) return;
-    const total = GameApp.config.game.portal.abilityCooldown;
+    const total = GameApp.config.game.abilities[this.selectedAbility].cooldown;
     const ratio = GameApp.utils.clamp(this.portalAbilityCooldown / total, 0, 1);
     const ready = ratio <= 0 && !this.completed && this.player.health > 0 && this.portal.health > 0;
     this.portalAbilityShade.style.height = (ratio * 100) + "%";
@@ -241,12 +288,29 @@ GameApp.scenes.GameScene = class {
   }
 
   usePortalAbility() {
+    if (GameApp.config.game.abilities[this.selectedAbility]?.passive) return;
     if (this.portalAbilityCooldown > 0 || this.paused || this.defeated || this.completed || this.player.health <= 0 || this.portal.health <= 0) return;
-    const config = GameApp.config.game.portal;
-    this.portalAbilityCooldown = config.abilityCooldown;
-    this.portalWaveTimer = config.abilityWaveDuration;
-    this.portalWaveRadius = 0;
-    this.portalWaveId += 1;
+    const ability = GameApp.config.game.abilities[this.selectedAbility];
+    if (this.selectedAbility === "giantShot") {
+      this.enemies.forEach((enemy) => enemy.updateStealth(this.player));
+      if (!this.combat.fireGiantProjectile(this.player, this.enemies)) return;
+    } else if (this.selectedAbility === "multiShot") {
+      this.enemies.forEach((enemy) => enemy.updateStealth(this.player));
+      if (!this.combat.fireMultiProjectiles(this.player, this.enemies)) return;
+    } else if (this.selectedAbility === "nightSpeed") {
+      this.player.speedBoostTimer = ability.duration;
+      this.particles.burst(this.player.centerX, this.player.position.y + this.player.height / 2, "#c5bcff", 16);
+    } else if (this.selectedAbility === "fullHeal") {
+      if (this.player.health >= this.player.maxHealth) return;
+      this.player.health = this.player.maxHealth;
+      this.healEffectTimer = 0.65;
+    } else {
+      const config = GameApp.config.game.portal;
+      this.portalWaveTimer = config.abilityWaveDuration;
+      this.portalWaveRadius = 0;
+      this.portalWaveId += 1;
+    }
+    this.portalAbilityCooldown = ability.cooldown;
     this.updatePortalAbilityButton();
   }
 
@@ -320,11 +384,8 @@ GameApp.scenes.GameScene = class {
     const portalWidth = spawn.portalWidth * this.entityScale;
     const portalHeight = spawn.portalHeight * this.entityScale;
     const groundY = height - this.groundHeight;
-    ctx.save();
-    ctx.fillStyle = "#382c49";
-    ctx.fillRect(0, groundY - portalHeight, portalWidth, portalHeight);
-    ctx.fillRect(width - portalWidth, groundY - portalHeight, portalWidth, portalHeight);
-    ctx.restore();
+    GameApp.renderers.PortalRenderer.drawSpawn(ctx, 0, groundY, portalWidth, portalHeight, this.background.time, -1, this.spawnPortalPulse.left);
+    GameApp.renderers.PortalRenderer.drawSpawn(ctx, width - portalWidth, groundY, portalWidth, portalHeight, this.background.time, 1, this.spawnPortalPulse.right);
   }
 
   heartPath(ctx, x, y, size) {
@@ -342,29 +403,57 @@ GameApp.scenes.GameScene = class {
   }
 
   drawHud(ctx, width) {
+    ctx.save(); ctx.scale(1.5, 1.5); width /= 1.5;
     const playerRatio = Math.max(0, this.player.health / this.player.maxHealth);
-    const pad = 34, panelY = 28, panelH = 104, playerW = 290, portalW = 250;
+    const pad = 34, panelY = 28, panelH = 104 / 1.25, playerW = 290, portalW = 250;
+    const healthTextY = panelY + 48;
     const panel = (x, w) => {
-      ctx.fillStyle = "rgba(96,66,86,.28)"; ctx.beginPath(); ctx.roundRect(x, panelY + 7, w, panelH, 24); ctx.fill();
-      const fill = ctx.createLinearGradient(x, panelY, x + w, panelY + panelH); fill.addColorStop(0, "#fff1d8"); fill.addColorStop(.52, "#c5e0ee"); fill.addColorStop(1, "#e8a9be");
-      ctx.fillStyle = fill; ctx.strokeStyle = "#fff9ed"; ctx.lineWidth = 4; ctx.beginPath(); ctx.roundRect(x, panelY, w, panelH, 24); ctx.fill(); ctx.stroke();
-      ctx.strokeStyle = "rgba(105,145,171,.72)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(x + 5, panelY + 5, w - 10, panelH - 10, 20); ctx.stroke();
+      ctx.fillStyle = "#a9657f"; ctx.beginPath(); ctx.roundRect(x, panelY + 8, w, panelH, 22); ctx.fill();
+      ctx.fillStyle = "#fff0d5"; ctx.strokeStyle = "#654765"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.roundRect(x, panelY, w, panelH, 22); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "rgba(220,143,170,.22)"; ctx.beginPath(); ctx.roundRect(x + 9, panelY + 9, w - 18, panelH - 18, 15); ctx.fill();
     };
     ctx.save(); panel(pad, playerW); panel(width - pad - portalW, portalW);
-    const heartX = pad + 18, heartY = panelY + 13, heartSize = 78;
-    this.heartPath(ctx, heartX, heartY, heartSize); ctx.fillStyle = "#7ca3bd"; ctx.fill();
+    const heartSize = 52, heartX = pad + 31, heartY = panelY + (panelH - heartSize) / 2;
+    this.heartPath(ctx, heartX, heartY, heartSize); ctx.fillStyle = "#d7afbd"; ctx.fill();
     ctx.save(); this.heartPath(ctx, heartX, heartY, heartSize); ctx.clip();
     const fillTop = heartY + heartSize * (1 - playerRatio);
     const heartFill = ctx.createLinearGradient(0, heartY, 0, heartY + heartSize); heartFill.addColorStop(0, "#ff6b8e"); heartFill.addColorStop(1, "#c91e52");
     ctx.fillStyle = heartFill; ctx.fillRect(heartX, fillTop, heartSize, heartY + heartSize - fillTop); ctx.restore();
-    this.heartPath(ctx, heartX, heartY, heartSize); ctx.strokeStyle = "#fff8ed"; ctx.lineWidth = 4; ctx.stroke();
-    ctx.fillStyle = "#4f6682"; ctx.font = "17px 'Bezmiar Cyrillic', sans-serif"; this.drawHeading(ctx, "ХРАНИТЕЛЬ", pad + 112, panelY + 37);
-    ctx.fillStyle = "#5e4057"; ctx.font = "26px Mariinavo, sans-serif"; ctx.fillText(Math.ceil(this.player.health) + " HP", pad + 112, panelY + 72);
-    if (this.player.regenerationTimer <= 0 && this.player.health < this.player.maxHealth && this.player.health > 0) { ctx.fillStyle = "#6a8b7c"; ctx.font = "13px Mariinavo, sans-serif"; ctx.fillText("+ РЕГЕНЕРАЦИЯ", pad + 112, panelY + 93); }
+    this.heartPath(ctx, heartX, heartY, heartSize); ctx.strokeStyle = "#654765"; ctx.lineWidth = 4; ctx.stroke();
+    ctx.fillStyle = "#a85f79"; ctx.font = "14px 'Bezmiar Cyrillic', sans-serif"; this.drawHeading(ctx, "ХРАНИТЕЛЬ", pad + 112, panelY + 22);
+    ctx.fillStyle = "#563b4b"; ctx.font = "40px Mariinavo, sans-serif"; ctx.fillText(Math.ceil(this.player.health) + "/" + this.player.maxHealth, pad + 112, healthTextY + 7);
+    if (this.player.regenerationTimer <= 0 && this.player.health < this.player.maxHealth && this.player.health > 0) { ctx.fillStyle = "#6a8b7c"; ctx.font = "11px Mariinavo, sans-serif"; ctx.fillText("+ РЕГЕНЕРАЦИЯ", pad + 112, panelY + 62); }
     const portalX = width - pad - portalW;
-    ctx.strokeStyle = "#e68cae"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(portalX + 48, panelY + panelH / 2, 25, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = "#6f9fc0"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(portalX + 48, panelY + panelH / 2, 14, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = "#4f6682"; ctx.font = "17px 'Bezmiar Cyrillic', sans-serif"; this.drawHeading(ctx, "ПОРТАЛ", portalX + 88, panelY + 37);
-    ctx.fillStyle = "#5e4057"; ctx.font = "30px Mariinavo, sans-serif"; ctx.fillText(Math.ceil(this.portal.health) + "/" + this.portal.maxHealth, portalX + 88, panelY + 75);
+    ctx.fillStyle = "#c67f9c"; ctx.strokeStyle = "#654765"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(portalX + 48, panelY + panelH / 2, 27, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = "#fff0d5"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(portalX + 48, panelY + panelH / 2, 14, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#a85f79"; ctx.font = "14px 'Bezmiar Cyrillic', sans-serif"; this.drawHeading(ctx, "ПОРТАЛ", portalX + 88, panelY + 22);
+    ctx.fillStyle = "#563b4b"; ctx.font = "40px Mariinavo, sans-serif"; ctx.fillText(Math.ceil(this.portal.health) + "/" + this.portal.maxHealth, portalX + 88, healthTextY + 7);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  drawHealEffect(ctx) {
+    if (this.healEffectTimer <= 0) return;
+    const progress = 1 - this.healEffectTimer / 0.65;
+    const x = this.player.centerX;
+    const y = this.player.position.y + this.player.height / 2;
+    const radius = this.player.height * (0.5 + progress * 1.1);
+    ctx.save();
+    ctx.globalAlpha = (1 - progress) * 0.85;
+    ctx.strokeStyle = "#fff4c7";
+    ctx.lineWidth = Math.max(2, this.entityScale * 4);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#bfffd5";
+    for (let i = 0; i < 6; i += 1) {
+      const angle = i * Math.PI / 3 + progress * 0.6;
+      const sparkRadius = radius * 0.7;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(angle) * sparkRadius, y + Math.sin(angle) * sparkRadius - progress * 12, Math.max(2, this.entityScale * 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -380,15 +469,16 @@ GameApp.scenes.GameScene = class {
     this.mushroomDecor.draw(ctx, this.platforms, this.level.decorations || [], this.entityScale);
     this.portal.draw(ctx, GameApp.renderers.PortalRenderer);
     this.player.draw(ctx, GameApp.renderers.PlayerRenderer);
+    this.mushroomDecor.drawHearts(ctx, this.player);
+    this.drawHealEffect(ctx);
     this.enemies.forEach((enemy) => enemy.draw(ctx, GameApp.renderers.EnemyRenderer));
     this.combat.draw(ctx);
     this.particles.draw(ctx);
     this.drawPortalShockwave(ctx, width, height);
     this.terrain.drawGround(ctx, 0, height - this.groundHeight, width, this.groundHeight);
-    this.enemies.filter((enemy) => enemy.alive && !enemy.isEmerging).forEach((enemy) => this.drawBar(ctx, enemy, config.colors.enemyHealth));
+    this.enemies.filter((enemy) => enemy.alive && !enemy.isEmerging && !enemy.isStealthed).forEach((enemy) => this.drawBar(ctx, enemy, config.colors.enemyHealth));
     if (config.ui.showPlayerHealthBar && this.player.health > 0) this.drawBar(ctx, this.player, config.colors.health);
     this.drawHud(ctx, width);
-    if (this.completed) this.drawMessage(ctx, this.reward > 0 ? "Уровень пройден! +" + this.reward + " монет" : "Уровень пройден!");
     this.drawCriticalNoise(ctx, width, height);
   }
 };

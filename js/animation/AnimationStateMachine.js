@@ -12,7 +12,9 @@ GameApp.animation.AnimationStateMachine = class {
   getPose(entity) {
     const resting = this.state === "idle" || this.state === "move";
     const target = (this.poses[this.state] || this.poses.idle)(resting ? this.time : this.stateTime, entity);
-    const t = Math.min(1, this.stateTime / (this.state === "hurt" ? 0.045 : 0.14));
+    const action = this.state === "meleeAttack" || this.state === "rangedAttack";
+    const duration = this.state === "hurt" || action ? 0.08 : (this.state === "land" ? 0.055 : (entity.visualBlendDuration || 0.14));
+    const t = Math.min(1, this.stateTime / duration);
     const blend = t * t * (3 - 2 * t);
     const result = {};
     for (const key of new Set([...Object.keys(this.fromPose), ...Object.keys(target)])) {

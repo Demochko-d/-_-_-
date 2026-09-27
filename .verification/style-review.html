@@ -1,0 +1,304 @@
+<!doctype html><html lang="ru"><head><base href="../"><meta charset="utf-8"><link rel="stylesheet" href="css/style.css"><script defer src="js/app.js"></script><script defer src="js/config/gameConfig.js"></script><script defer src="js/utils/EventBus.js"></script><script defer src="js/utils/MathUtils.js"></script><script defer src="js/audio/AudioManager.js"></script><script defer src="js/animation/easing.js"></script><script defer src="js/animation/Tween.js"></script><script defer src="js/animation/AnimationController.js"></script><script defer src="js/animation/AnimationStateMachine.js"></script><script defer src="js/animation/characters/PlayerAnimations.js"></script><script defer src="js/animation/characters/GhostAnimations.js"></script><script defer src="js/animation/characters/BigGhostAnimations.js"></script><script defer src="js/core/InputManager.js"></script><script defer src="js/core/SceneManager.js"></script><script defer src="js/core/LevelManager.js"></script><script defer src="js/core/ProgressManager.js"></script><script defer src="js/core/Game.js"></script><script defer src="js/entities/Entity.js"></script><script defer src="js/entities/Player.js"></script><script defer src="js/entities/Enemy.js"></script><script defer src="js/entities/Portal.js"></script><script defer src="js/renderers/PlayerRenderer.js"></script><script defer src="js/renderers/effects/DeathDissolveRenderer.js"></script><script defer src="js/renderers/characters/GhostVisual.js"></script><script defer src="js/renderers/characters/BigGhostVisual.js"></script><script defer src="js/renderers/EnemyRenderer.js"></script><script defer src="js/renderers/PortalRenderer.js"></script><script defer src="js/renderers/DreamBackgroundRenderer.js"></script><script defer src="js/renderers/TerrainRenderer.js"></script><script defer src="js/renderers/MushroomDecorRenderer.js"></script><script defer src="js/systems/CollisionSystem.js"></script><script defer src="js/systems/SpawnSystem.js"></script><script defer src="js/systems/CombatSystem.js"></script><script defer src="js/systems/ParticleSystem.js"></script><script defer src="js/ui/HUD.js"></script><script defer src="js/scenes/MainMenuScene.js"></script><script defer src="js/scenes/AlmanacScene.js"></script><script defer src="js/scenes/SettingsScene.js"></script><script defer src="js/scenes/LevelSelectScene.js"></script><script defer src="js/scenes/GameScene.js"></script><script defer src="js/levels/level1.js"></script><script defer src="js/levels/level2.js"></script><script defer src="js/levels/level3.js"></script><script defer src="js/levels/level4.js"></script><script defer src="js/levels/level5.js"></script><script>
+window.addEventListener('load', async () => {
+ const results=[]; const check=(ok,label)=>{ if(!ok) throw Error(label); results.push(label); };
+ try {
+  await document.fonts.ready;
+  const howToScript=document.createElement('script');howToScript.src='js/scenes/HowToPlayScene.js';
+  await new Promise((resolve,reject)=>{howToScript.onload=resolve;howToScript.onerror=reject;document.head.append(howToScript);});
+  const game = new GameApp.core.Game(document.querySelector('#app'));
+  game.audio.playMusic=()=>{};
+  game.audio.playSound=()=>{};
+  game.progress.complete=()=>0;
+  game.progress.data={...game.progress.defaults(),coins:300};
+  game.sceneManager.change(GameApp.scenes.MainMenuScene);
+  check(!!game.root.querySelector('#how-to-play'),'main menu has how-to-play button');
+  game.root.querySelector('#how-to-play').click();
+  check(game.sceneManager.current instanceof GameApp.scenes.HowToPlayScene&&game.root.querySelector('#how-to-content').textContent===GameApp.config.game.help.text,'how-to-play scene reads text from config');
+  check(game.sceneManager.current.enemy.kind==='brute'&&game.root.querySelector('.menu-brute-canvas')?.width===430&&Math.abs(game.sceneManager.current.enemy.width-GameApp.config.game.enemies.splitter.width*7)<.01,'brute decor matches main-menu splitter size');
+  check(game.root.querySelector('.menu-brute-canvas').getContext('2d').getImageData(0,0,430,460).data.some(v=>v),'brute decor is painted on help page');
+  if(innerWidth>760)check(game.root.querySelector('.menu-brute').getBoundingClientRect().left>=game.root.querySelector('.how-to-content').getBoundingClientRect().right,'brute decor is to the right of help text');
+  game.root.querySelector('#back').click();
+  check(game.sceneManager.current instanceof GameApp.scenes.MainMenuScene,'how-to-play back button returns to main menu');
+  const menuBacks=[];
+  for(const Scene of [GameApp.scenes.AlmanacScene,GameApp.scenes.SettingsScene,GameApp.scenes.HowToPlayScene,GameApp.scenes.LevelSelectScene]) {
+    game.sceneManager.change(Scene);
+    const back=game.root.querySelector('#back'),panel=game.root.querySelector('.panel'),style=getComputedStyle(back);
+    menuBacks.push({top:back.offsetTop,right:panel.clientWidth-back.offsetLeft-back.offsetWidth,color:style.backgroundColor,shadow:style.boxShadow,font:style.fontSize,padding:style.padding});
+    check(!!back&&back.closest('.almanac-head'),'back button uses shared top header');
+  }
+  check(menuBacks.every(button=>button.color===menuBacks[0].color&&button.shadow===menuBacks[0].shadow&&button.font===menuBacks[0].font&&button.padding===menuBacks[0].padding),'all menu back buttons share almanac styling');
+  check(Math.max(...menuBacks.map(button=>button.top))-Math.min(...menuBacks.map(button=>button.top))<3&&Math.max(...menuBacks.map(button=>button.right))-Math.min(...menuBacks.map(button=>button.right))<3,'all menu back buttons share top-right position '+JSON.stringify(menuBacks));
+  game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  check(game.root.querySelector('.hub-top').firstElementChild.classList.contains('coins'),'coins are on the left of level selection');
+  check(Number.parseFloat(getComputedStyle(game.root.querySelector('.coins')).fontSize)>30,'coin counter is larger');
+  check(game.root.querySelector('.upgrade-area').getBoundingClientRect().top>game.root.querySelector('.hub-top #back').getBoundingClientRect().bottom,'raised hub panels stay below back button');
+  check(getComputedStyle(game.root.querySelector('.upgrade-area')).overflowY==='scroll'&&getComputedStyle(game.root.querySelector('.levels-area')).overflowY==='scroll','both hub columns have permanent native scrollbars');
+  check(Number.parseFloat(getComputedStyle(game.root.querySelector('.ability-help')).fontSize)>18,'menu body text scale applies');
+  const giantPrice=GameApp.config.game.abilities.giantShot.price;
+  check(game.root.querySelector('[data-ability="giantShot"] .ability-locked')?.textContent.includes(String(giantPrice)),'locked ability shows configured price');
+  check(game.progress.buyAbility('giantShot',giantPrice),'giant ability purchase');
+  check(game.progress.data.coins===300-giantPrice&&game.progress.ownsAbility('giantShot'),'purchase uses configured coin price');
+  check(game.progress.data.equippedAbility==='giantShot','purchased ability equips');
+  check(game.progress.equipAbility('portalWave')&&game.progress.data.equippedAbility==='portalWave','only selected ability equips');
+  game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  check(game.root.querySelectorAll('.ability-card').length===7,'ability cards render');
+  check(game.root.querySelector('[data-ability="strongSpirit"] .ability-locked')?.textContent.includes(String(GameApp.config.game.abilities.strongSpirit.price)),'strong spirit shows configured price');
+  check(game.root.querySelector('[data-ability="nightSpeed"] .ability-cooldown').textContent.includes('12 с')&&game.root.querySelector('[data-ability="multiShot"] .ability-cooldown').textContent.includes('20 с'),'ability cooldown labels come from config');
+  check(game.root.querySelector('[data-ability="strongMasonry"] .ability-cooldown').textContent.includes('без перезарядки'),'passive ability has no cooldown label');
+  const hubTrack=getComputedStyle(game.root.querySelector('.upgrade-area'),'::-webkit-scrollbar-track');
+  check(hubTrack.backgroundColor==='rgb(255, 248, 241)'&&hubTrack.borderRadius==='999px'&&getComputedStyle(game.root.querySelector('.upgrade-area'),'::-webkit-scrollbar-thumb').backgroundColor==='rgb(212, 143, 172)','hub scrollbars have rounded white tracks and pink thumbs');
+  check(game.root.querySelector('[data-ability="strongMasonry"] svg').querySelectorAll('path').length===2,'masonry icon is a shield');
+  check(game.root.querySelector('[data-ability="portalWave"] svg').querySelectorAll('circle').length===3,'wave icon uses circular ripples');
+  check(game.root.querySelector('[data-ability="giantShot"] svg').querySelectorAll('path').length===1,'giant shot icon has motion streaks');
+  check(game.root.querySelector('[data-ability="fullHeal"] svg').querySelectorAll('path').length===1,'heal icon is a single heart');
+  check(game.root.querySelectorAll('.ability-equipped').length===1,'one equipped checkmark');
+  const stablePanel=game.root.querySelector('.panel');game.root.querySelector('[data-ability="giantShot"]').click();
+  check(game.root.querySelector('.panel')===stablePanel&&game.progress.data.equippedAbility==='giantShot','ability changes without scene refresh');
+  check(getComputedStyle(game.root.querySelector('.ability-icon')).backgroundImage==='none','ability icons have no glare');
+  game.progress.data.equippedAbility='giantShot';
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const abilityScene=game.sceneManager.current;
+  const giantTarget=new GameApp.entities.Enemy('brute',{x:1100,y:abilityScene.collision.groundY-100,scale:abilityScene.entityScale});
+  abilityScene.enemies=[giantTarget];abilityScene.portalAbilityCooldown=0;abilityScene.usePortalAbility();
+  check(abilityScene.portalAbilityCooldown===20&&abilityScene.combat.projectiles.some(shot=>shot.giant),'giant shot starts 20 second cooldown ['+abilityScene.selectedAbility+','+abilityScene.portalAbilityCooldown+','+abilityScene.combat.projectiles.length+']');
+  for(let i=0;i<240&&giantTarget.health===giantTarget.maxHealth;i++)abilityScene.combat.update(1/60,abilityScene.player,abilityScene.enemies,abilityScene.portal);
+  check(giantTarget.health===giantTarget.maxHealth-200,'giant shot deals exactly 200 damage');
+  check(GameApp.config.game.animation.deathDuration===.525,'death animation duration is halved');
+  check(GameApp.config.game.abilities.fullHeal.price>0&&GameApp.config.game.abilities.fullHeal.cooldown===20,'heal price and cooldown');
+  game.progress.data.coins=500;game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  check(!!game.root.querySelector('[data-ability="fullHeal"] .ability-locked'),'heal is shown as locked');
+  game.root.querySelector('[data-ability="fullHeal"]').click();
+  check(game.progress.data.coins===500-GameApp.config.game.abilities.fullHeal.price&&game.progress.data.equippedAbility==='fullHeal'&&game.root.querySelectorAll('.ability-equipped').length===1,'heal purchase and exclusive equip');
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const healScene=game.sceneManager.current;healScene.player.health=17;healScene.usePortalAbility();
+  check(healScene.player.health===healScene.player.maxHealth&&healScene.portalAbilityCooldown===20&&healScene.healEffectTimer>0,'heal restores health instantly and starts cooldown and effect');
+  healScene.drawHealEffect(game.ctx);healScene.update(.7);
+  check(healScene.healEffectTimer===0,'heal effect ends');
+  game.progress.data.coins=50;game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  game.root.querySelector('[data-ability="strongMasonry"]').click();
+  check(game.progress.data.coins===50-GameApp.config.game.abilities.strongMasonry.price&&game.progress.data.equippedAbility==='strongMasonry','masonry uses configured price and equips');
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const masonryScene=game.sceneManager.current;
+  check(masonryScene.portal.maxHealth===GameApp.config.game.portal.maxHealth+2&&masonryScene.portal.health===masonryScene.portal.maxHealth,'masonry adds two portal health');
+  check(!masonryScene.portalAbilityButton,'passive masonry has no activation button');
+  masonryScene.usePortalAbility();check(masonryScene.portalAbilityCooldown===0&&masonryScene.portalWaveTimer===0,'passive masonry cannot be activated');
+  game.progress.data.coins=50;game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  game.root.querySelector('[data-ability="strongSpirit"]').click();
+  check(game.progress.data.coins===50-GameApp.config.game.abilities.strongSpirit.price&&game.progress.data.equippedAbility==='strongSpirit','strong spirit purchases and equips');
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const spiritScene=game.sceneManager.current;
+  check(spiritScene.player.maxHealth===GameApp.config.game.player.maxHealth+30&&spiritScene.player.health===spiritScene.player.maxHealth,'strong spirit adds thirty player health');
+  check(!spiritScene.portalAbilityButton,'strong spirit is passive');
+  const giant=new GameApp.entities.Enemy('gigant',{x:spiritScene.player.position.x+240,y:spiritScene.collision.groundY-GameApp.config.game.enemies.gigant.height*spiritScene.entityScale,scale:spiritScene.entityScale,emerging:true});
+  giant.update(GameApp.config.game.spawn.appearanceDuration,spiritScene.portal,spiritScene.player,spiritScene.collision);
+  giant.update(1/60,spiritScene.portal,spiritScene.player,spiritScene.collision);
+  check(giant.isCharging&&giant.velocity.x===giant.speed*2,'giant charges toward portal at double speed after emerging');
+  giant.hurt();giant.update(1/60,spiritScene.portal,spiritScene.player,spiritScene.collision);
+  check(giant.visualHurtTimer>0&&giant.animation.state==='charge','damage flash does not interrupt giant charge pose');
+  const giantOtherSide=new GameApp.entities.Enemy('gigant',{x:spiritScene.portal.centerX+200,y:giant.position.y,scale:spiritScene.entityScale});
+  giantOtherSide.update(1/60,spiritScene.portal,spiritScene.player,spiritScene.collision);
+  check(giantOtherSide.velocity.x===-giantOtherSide.speed*2,'giant charges left toward portal from right side');
+  check(giant.animation.state==='charge'&&giant.chargeTrail.length>0,'giant has charge pose and motion trail');
+  spiritScene.enemies=[giant];spiritScene.player.attackTimer=1000;spiritScene.combat.rangedTimer=1000;
+  spiritScene.update(1/60);
+  check(spiritScene.particles.items.length>0,'giant charge emits particles');
+  check(spiritScene.player.health===spiritScene.player.maxHealth,'distant giant does not hit player');
+  giant.position.x=spiritScene.player.position.x;giant.position.y=spiritScene.player.position.y;giant.attackTimer=999;
+  spiritScene.player.attackTimer=999;spiritScene.combat.rangedTimer=999;
+  const beforeCharge=spiritScene.player.health;
+  spiritScene.combat.update(0,spiritScene.player,[giant],spiritScene.portal);
+  check(spiritScene.player.health===beforeCharge-giant.damage*2&&!giant.isCharging,'giant first hit is instant and double damage');
+  spiritScene.combat.update(0,spiritScene.player,[giant],spiritScene.portal);
+  check(spiritScene.player.health===beforeCharge-giant.damage*2,'giant returns to ordinary cooldown after charge');
+  giant.attackTimer=0;spiritScene.combat.update(0,spiritScene.player,[giant],spiritScene.portal);
+  check(spiritScene.player.health===beforeCharge-giant.damage*3,'giant later hit uses normal damage');
+  const giantCanvas=document.createElement('canvas');giantCanvas.width=400;giantCanvas.height=400;
+  giant.position={x:100,y:140};GameApp.renderers.EnemyRenderer.draw(giantCanvas.getContext('2d'),giant);
+  check(giantCanvas.getContext('2d').getImageData(100,80,120,60).data.some(v=>v),'giant horns render above body');
+  game.progress.data.equippedAbility='nightSpeed';game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const speedScene=game.sceneManager.current;speedScene.usePortalAbility();
+  check(speedScene.portalAbilityCooldown===12&&speedScene.player.speedBoostTimer===5,'night speed activates for five seconds with twelve second cooldown');
+  const running={pressed:key=>key==='right'?1:0,consume:()=>false},idle={pressed:()=>0,consume:()=>false};
+  speedScene.player.update(1/60,running,speedScene.collision);
+  check(speedScene.player.velocity.x===GameApp.config.game.player.speed*speedScene.player.scale*2,'night speed doubles movement velocity');
+  for(let i=0;i<300;i++)speedScene.player.update(1/60,idle,speedScene.collision);
+  speedScene.player.update(1/60,running,speedScene.collision);
+  check(speedScene.player.velocity.x===GameApp.config.game.player.speed*speedScene.player.scale,'night speed expires after five seconds');
+  game.progress.data.equippedAbility='multiShot';game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const multiScene=game.sceneManager.current;
+  const multiTargets=[700,1000].map(x=>new GameApp.entities.Enemy('brute',{x,y:multiScene.collision.groundY-100,scale:multiScene.entityScale}));
+  multiScene.enemies=multiTargets;multiScene.player.attackTimer=1000;multiScene.combat.rangedTimer=1000;multiScene.usePortalAbility();
+  check(multiScene.portalAbilityCooldown===20&&multiScene.combat.projectiles.filter(shot=>shot.multi).length===2,'multishot fires at each enemy and starts cooldown');
+  for(let i=0;i<240;i++)multiScene.combat.update(1/60,multiScene.player,multiScene.enemies,multiScene.portal);
+  check(multiTargets.every(enemy=>enemy.health===enemy.maxHealth-30),'multishot deals thirty damage to every target');
+  const ninja=new GameApp.entities.Enemy('ninja',{x:healScene.player.position.x+40,y:healScene.player.position.y,scale:healScene.entityScale});
+  ninja.updateStealth(healScene.player);
+  check(ninja.isStealthed,'ninja fades when player is nearby');
+  const ninjaHealth=ninja.health;healScene.combat.hit(ninja,30,'#fff');
+  check(ninja.health===ninjaHealth,'stealthed ninja ignores damage');
+  healScene.combat.update(1/60,healScene.player,[ninja],healScene.portal);
+  check(healScene.combat.rangedTimer===0&&healScene.player.attackTimer===0,'player cannot target stealthed ninja');
+  ninja.position.x+=GameApp.config.game.enemies.ninja.stealthDistance*ninja.scale*3;
+  ninja.updateStealth(healScene.player);
+  check(!ninja.isStealthed,'ninja reappears when player moves away');
+  healScene.combat.hit(ninja,30,'#fff');check(ninja.health===ninjaHealth-30,'visible ninja takes damage');
+  game.sceneManager.change(GameApp.scenes.AlmanacScene);
+  check(game.root.querySelector('[data-ghost="ninja"]')&&game.root.textContent.includes('Скорость атаки')&&game.root.textContent.includes('Урон порталу'),'almanac shows ninja and combat stats');
+  const almanacGrid=game.root.querySelector('.ghost-grid'),almanacHeader=game.root.querySelector('.almanac-head');
+  const headerTop=almanacHeader.getBoundingClientRect().top;
+  check(getComputedStyle(almanacGrid).overflowY==='scroll'&&getComputedStyle(almanacGrid,'::-webkit-scrollbar-track').borderRadius==='999px','almanac uses matching permanent scrollbar');
+  check(getComputedStyle(almanacGrid).gridTemplateColumns.split(' ').length<=4,'almanac shows at most four enemies per row');
+  almanacGrid.scrollTop=100;
+  check(almanacGrid.scrollTop>0&&almanacHeader.getBoundingClientRect().top===headerTop,'almanac cards scroll below fixed heading');
+  const cards=[...game.root.querySelectorAll('.ghost-card')];
+  const rows=new Map();cards.forEach(card=>{const top=Math.round(card.getBoundingClientRect().top);const statTop=card.querySelector('dl').getBoundingClientRect().top;rows.set(top,[...(rows.get(top)||[]),statTop]);});
+  check([...rows.values()].every(tops=>Math.max(...tops)-Math.min(...tops)<1),'almanac stats align within each row');
+  check(cards.every(card=>[...card.querySelectorAll('h2,.ghost-description,dl,dl div')].every(el=>el.getBoundingClientRect().right<=card.getBoundingClientRect().right-10)),'almanac content stays inside cards');
+  check(cards.every(card=>card.querySelector('.ghost-description').getBoundingClientRect().bottom<=card.querySelector('dl').getBoundingClientRect().top),'almanac description does not overlap stats');
+  game.progress.data.equippedAbility='portalWave';
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const scene=game.sceneManager.current;
+  check(!game.root.querySelector('.portal-ability__key')&&!scene.portalAbilityButton.textContent.includes('ENTER'),'ability icon has no Enter label');
+  check(game.root.querySelector('.game-level-caption')?.textContent.includes('Уровень 1')&&game.root.querySelector('.game-level-caption')?.textContent.includes(scene.level.name),'level caption appears below pause');
+  const spawnProbe=new GameApp.systems.SpawnSystem(scene.level,()=>{},side=>{scene.spawnPortalPulse[side]=GameApp.config.game.spawn.appearanceDuration;});spawnProbe.entityScale=scene.entityScale;spawnProbe.worldWidth=scene.viewportWidth;spawnProbe.groundY=scene.collision.groundY;spawnProbe.remaining=1;spawnProbe.kind='runner';spawnProbe.side='left';spawnProbe.timer=0;spawnProbe.update(0,[]);
+  check(scene.spawnPortalPulse.left>0,'spawn portal pulse triggers');
+  const scratch=document.createElement('canvas'); scratch.width=1920;scratch.height=1080;
+  const ctx=scratch.getContext('2d',{willReadFrequently:true});
+  const heartProbe=new GameApp.renderers.MushroomDecorRenderer();heartProbe.configure(scene.platforms,scene.level.decorations||[],scene.entityScale);
+  const heartPlayer={position:{x:-1000,y:-1000},width:42,height:42,health:40,maxHealth:100,get centerX(){return this.position.x+this.width/2;}};
+  for(let i=0;i<1260;i++)heartProbe.update(1/60,heartPlayer);
+  const topMushroom=heartProbe.mushrooms.reduce((a,b)=>a.platform.y<b.platform.y?a:b);
+  check(!!topMushroom.heart&&heartProbe.mushrooms.filter(m=>m.heart).length===1&&topMushroom.timer===null,'highest mushroom spawns first and stops its timer');
+  heartProbe.drawHearts(ctx,heartPlayer);check(ctx.getImageData(0,0,1920,1080).data.some(v=>v),'falling mushroom heart renders');
+  heartPlayer.position={x:topMushroom.x+topMushroom.heart.x*topMushroom.scale-21,y:topMushroom.y+topMushroom.heart.y*topMushroom.scale-21};
+  heartProbe.update(0,heartPlayer);check(heartPlayer.health===70&&topMushroom.timer===GameApp.config.game.mushroomHearts.interval&&!topMushroom.heart,'heart pickup heals and resets full cooldown');
+  ctx.clearRect(0,0,1920,1080);heartProbe.drawHearts(ctx,heartPlayer);check(ctx.getImageData(0,0,1920,1080).data.some(v=>v),'heart pickup animation renders');
+  const pausedMushroomTimer=scene.mushroomDecor.mushrooms[0].timer;scene.pauseGame();scene.update(1);check(scene.mushroomDecor.mushrooms[0].timer===pausedMushroomTimer,'pause freezes mushroom timers');scene.resumeGame();
+  for(const health of [10,8,7.5,6,5,3,2.5,1,0]) {
+    scene.portal.health=health;scene.portal.hurt();
+    const expected=[.75,.5,.25,0].filter(t=>health/10<=t).length;
+    check(scene.portal.damageStage===expected,'portal stage at '+health+' HP');
+    const count=scene.portal.debris.length;scene.portal.hurt();
+    check(scene.portal.debris.length===count,'no duplicate rubble at '+health+' HP');
+    for(let i=0;i<70;i++)scene.portal.update(1/60);
+    GameApp.renderers.PortalRenderer.draw(ctx,scene.portal);
+    check(scene.portal.debris.every(s=>s.y<=.94&&Number.isFinite(s.x)),'rubble settles');
+  }
+  check(scene.portal.debris.length===15,'all stones collapse');
+  const p=scene.player, input={pressed:()=>0,consume:()=>false};
+  const attackProbe=new GameApp.entities.Player({x:180,y:scene.collision.groundY-GameApp.config.game.player.height,scale:1});
+  attackProbe.attack('melee',1);
+  const attackStart={...attackProbe.attackOrigin};
+  attackProbe.update(1/60,{pressed:k=>k==='left'?1:0,consume:()=>false},scene.collision);
+  check(attackProbe.position.x<attackStart.x-attackProbe.width/2&&attackProbe.attackFacing===1&&attackProbe.facing===1&&attackProbe.attackOrigin.x===attackStart.x,'attack keeps direction and origin while moving backward');
+  attackProbe.animation.time=GameApp.config.game.animation.playerMeleeDuration/2;
+  check(attackProbe.animation.getPose(attackProbe).x>0,'melee pose stays in its original direction');
+  const bypassPortal=new GameApp.entities.Portal({x:700,y:p.position.y,scale:1});
+  const bypassRunner=new GameApp.entities.Enemy('runner2',{x:p.position.x,y:p.position.y,scale:1});
+  const bypassCombat=new GameApp.systems.CombatSystem(new GameApp.utils.EventBus(),{burst:()=>{}});
+  bypassRunner.isAttacking=true;bypassRunner.update(1/60,bypassPortal,p,scene.collision);
+  check(bypassRunner.velocity.x>0&&!bypassRunner.isAttacking,'runner2 keeps moving through player');
+  bypassRunner.position.x=p.position.x;bypassRunner.position.y=p.position.y;
+  const untouchedHealth=p.health;p.attackTimer=100;bypassCombat.rangedTimer=100;
+  bypassCombat.update(0,p,[bypassRunner],bypassPortal);
+  check(p.health===untouchedHealth&&bypassRunner.alive&&!bypassRunner.isAttacking,'runner2 never attacks player');
+  bypassRunner.position.x=bypassPortal.position.x;bypassRunner.position.y=bypassPortal.position.y;
+  bypassCombat.update(0,p,[bypassRunner],bypassPortal);
+  check(!bypassRunner.alive&&bypassPortal.health===bypassPortal.maxHealth-bypassRunner.portalDamage,'runner2 damages portal');
+  p.attackTimer=0;
+  const flashCanvas=document.createElement('canvas');flashCanvas.width=400;flashCanvas.height=400;const flashCtx=flashCanvas.getContext('2d');
+  const alphaSum=()=>{const pixels=flashCtx.getImageData(0,0,400,400).data;let sum=0;for(let i=3;i<pixels.length;i+=4)sum+=pixels[i];return sum;};
+  const savedPlayerPosition={...p.position};p.position={x:100,y:100};p.visualHurtTimer=0;GameApp.renderers.PlayerRenderer.draw(flashCtx,p);const playerNormal=alphaSum();flashCtx.clearRect(0,0,400,400);p.visualHurtTimer=.1;GameApp.renderers.PlayerRenderer.draw(flashCtx,p);check(alphaSum()<playerNormal*.7,'player flashes on damage');p.visualHurtTimer=0;p.position=savedPlayerPosition;
+  flashCtx.clearRect(0,0,400,400);const flashGhost=new GameApp.entities.Enemy('runner',{x:100,y:100,scale:2});flashGhost.visualHurtTimer=0;GameApp.renderers.EnemyRenderer.draw(flashCtx,flashGhost);const ghostNormal=alphaSum();flashCtx.clearRect(0,0,400,400);flashGhost.visualHurtTimer=.1;GameApp.renderers.EnemyRenderer.draw(flashCtx,flashGhost);check(alphaSum()<ghostNormal*.7,'ghost flashes on damage');
+  p.update(1/60,input,scene.collision);check(p.trailStrength===0,'idle has no trail');
+  p.update(1/60,{pressed:k=>k==='right'?1:0,consume:()=>false},scene.collision);
+  check(p.trailStrength>0,'movement has trail');
+  p.update(1/60,input,scene.collision);check(p.trailStrength===0,'stop clears trail');
+  p.position.x=scene.viewportWidth-p.width;
+  p.update(1/60,{pressed:k=>k==='right'?1:0,consume:()=>false},scene.collision);
+  check(p.trailStrength===0,'wall has no trail');
+  p.update(1/60,{pressed:()=>0,consume:k=>k==='jump'},scene.collision);
+  check(p.trailStrength>0 && p.trailAngle<0,'jump has upward trail');
+  for(const state of ['idle','move','jump','fall','land','meleeAttack','rangedAttack','hurt']) {
+    p.animation.setState(state);
+    for(let i=0;i<30;i++){p.animation.update(1/60);check(Object.values(p.animation.getPose(p)).every(Number.isFinite),'finite pose '+state);}
+  }
+  for(const kind of ['runner','brute','splitter','player']) {
+    const e=kind==='player'?new GameApp.entities.Player({x:100,y:100,scale:2}):new GameApp.entities.Enemy(kind,{x:100,y:100,scale:2});
+    const visual=kind==='player'?GameApp.renderers.PlayerRenderer:(kind==='brute'?GameApp.renderers.characters.BigGhostVisual:GameApp.renderers.characters.GhostVisual);
+    e.animation.time=2;e.deathPose=e.animation.getPose(e);
+    const a=document.createElement('canvas');a.width=400;a.height=400;const ac=a.getContext('2d');
+    visual.draw(ac,e,e.deathPose);const before=ac.getImageData(0,0,400,400).data;
+    ac.clearRect(0,0,400,400);GameApp.renderers.effects.DeathDissolveRenderer.drawDissolved(ac,e,0,visual);
+    const after=ac.getImageData(0,0,400,400).data;let diff=0,total=0;
+    for(let j=3;j<before.length;j+=4){diff+=Math.abs(before[j]-after[j]);total+=before[j];}
+    check(diff/total<.06,'death retains silhouette '+kind);
+    for(const progress of [.2,.5,.8,1]) {ac.clearRect(0,0,400,400);GameApp.renderers.effects.DeathDissolveRenderer.drawDissolved(ac,e,progress,visual);}
+    check(!ac.getImageData(0,0,400,400).data.some(v=>v),'death fully fades '+kind);
+  }
+  const waveCanvas=document.createElement('canvas');waveCanvas.width=400;waveCanvas.height=400;const waveCtx=waveCanvas.getContext('2d');const waveEnemy=new GameApp.entities.Enemy('splitter',{x:150,y:150,scale:2});GameApp.renderers.effects.DeathDissolveRenderer.drawDeathWave(waveCtx,waveEnemy,.76);check(waveCtx.getImageData(0,0,400,400).data.some(v=>v),'death finishes with circular wave');
+  for(let level=1;level<=5;level++) {
+    game.sceneManager.change(GameApp.scenes.GameScene,'level'+level); const s=game.sceneManager.current;
+    s.player.health=100000;s.portal.health=100000;
+    for(let i=0;i<1200;i++){s.update(1/60);if(i%60===0)s.draw(ctx);}
+    check(s.enemies.every(e=>Number.isFinite(e.position.x)&&Number.isFinite(e.position.y)),'20 second combat level '+level);
+  }
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');
+  const dying=game.sceneManager.current;dying.portal.health=0;dying.portal.hurt();dying.showDefeatMenu();
+  const firstStoneY=dying.portal.debris[0].y;for(let i=0;i<60;i++)dying.update(1/60);
+  check(dying.portal.debris[0].y!==firstStoneY && dying.portal.debris.every(s=>s.y===.94),'collapse finishes after defeat');
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');const winner=game.sceneManager.current;
+  let rewardCalls=0;const originalComplete=game.progress.complete;game.progress.complete=()=>{rewardCalls++;return 77;};
+  winner.spawner.update=()=>{};winner.spawner.isFinished=()=>true;winner.update(0);
+  check(winner.completed&&!winner.gameOverlay.hidden&&winner.gameOverlay.classList.contains('is-victory')&&winner.resumeButton.hidden,'victory opens final menu');
+  check(winner.gameOverlay.querySelector('.game-dialog__reward').textContent.includes('77'),'victory displays actual earned coins');
+  winner.update(10);check(game.sceneManager.current===winner&&rewardCalls===1,'victory waits for user and grants reward once');
+  winner.gameOverlay.querySelector('[data-action="restart"]').click();check(game.sceneManager.current!==winner&&!game.sceneManager.current.completed,'victory restart starts fresh level');
+  const repeatWinner=game.sceneManager.current;repeatWinner.completed=true;repeatWinner.reward=0;repeatWinner.showVictoryMenu();
+  check(repeatWinner.gameOverlay.querySelector('.game-dialog__reward').textContent.includes('0'),'victory shows zero reward on repeat completion');
+  repeatWinner.gameOverlay.querySelector('[data-action="levels"]').click();check(game.sceneManager.current instanceof GameApp.scenes.LevelSelectScene,'victory menu button opens level selection');game.progress.complete=originalComplete;
+  game.sceneManager.change(GameApp.scenes.GameScene,'level1');const preview=game.sceneManager.current;
+  preview.pauseGame();const pausedTime=preview.portal.time;preview.update(.2);check(preview.portal.time===pausedTime,'pause freezes portal animation');preview.resumeGame();
+  preview.background.time=3;preview.terrain.time=3;preview.mushroomDecor.time=3;preview.portal.time=3;
+  preview.enemies=[new GameApp.entities.Enemy('runner',{x:210,y:preview.collision.groundY-44,scale:preview.entityScale})];
+  preview.draw(game.ctx);
+  const stamp=ctx=>Array.from(ctx.getImageData(0,0,1920,1080).data).filter((_,i)=>i%4000===0).join(',');
+  preview.background.draw(ctx,1920,1080);const first=stamp(ctx);preview.background.update(1);preview.background.draw(ctx,1920,1080);
+  check(first!==stamp(ctx),'background visibly animates');
+  if(location.search.includes('hearts')) {
+    const c=game.canvas.getContext('2d');c.fillStyle='#352341';c.fillRect(0,0,1920,1080);
+    for(let stage=0;stage<3;stage++){
+      const r=new GameApp.renderers.MushroomDecorRenderer();r.configure([{x:160+stage*570,y:590,width:340}],[],3);
+      const p={position:{x:-1000,y:-1000},width:126,height:126,health:40,maxHealth:100,get centerX(){return this.position.x+63;}};
+      r.update(20,p);for(let i=0;i<(stage===0?14:65);i++)r.update(1/60,p);
+      if(stage===2){const m=r.mushrooms[0];p.position={x:m.x+m.heart.x*3-63,y:m.y+m.heart.y*3-63};r.update(0,p);r.update(.15,p);}
+      r.draw(c,[],[],3);r.drawHearts(c,p);
+    }
+    document.body.dataset.canvasImage=game.canvas.toDataURL('image/png');
+  } else if(location.search.includes('almanac')) {
+    game.sceneManager.change(GameApp.scenes.AlmanacScene);
+  } else if(location.search.includes('abilities')) {
+    game.progress.data.coins=300;game.progress.data.ownedAbilities=['portalWave'];game.progress.data.equippedAbility='portalWave';
+    game.sceneManager.change(GameApp.scenes.LevelSelectScene);
+  } else if(location.search.includes('menu')) {
+    game.sceneManager.change(GameApp.scenes.MainMenuScene);
+    check(!!game.root.querySelector('.menu-splitter-canvas'),'main menu splitter decor renders');
+    check(!game.root.querySelector('.menu-splitter span'),'splitter caption removed');
+  } else if(location.search.includes('sheet')) {
+    const c=game.canvas.getContext('2d');c.fillStyle='#f1cdd0';c.fillRect(0,0,1920,1080);c.fillStyle='#654765';c.font='32px sans-serif';
+    c.fillText('Портал: 100% / 75% / 50% / 25% / 0% HP',80,70);
+    for(const [i,ratio] of [1,.75,.5,.25,0].entries()){
+      const e=new GameApp.entities.Portal({x:140+i*350,y:120,scale:2.1});e.health=e.maxHealth*ratio;e.hurt();for(let j=0;j<60;j++)e.update(1/60);GameApp.renderers.PortalRenderer.draw(c,e);
+    }
+    c.fillText('Мягкое растворение: 0% / 20% / 45% / 70% / 100%',80,460);
+    for(const [row,kind] of ['player','runner','brute'].entries())for(const [i,progress]of [0,.2,.45,.7,1].entries()){
+      const e=kind==='player'?new GameApp.entities.Player({x:160+i*350,y:520+row*160,scale:2.5}):new GameApp.entities.Enemy(kind,{x:160+i*350,y:520+row*160,scale:2.5});
+      e.animation.time=2;e.deathPose=e.animation.getPose(e);const v=kind==='player'?GameApp.renderers.PlayerRenderer:kind==='brute'?GameApp.renderers.characters.BigGhostVisual:GameApp.renderers.characters.GhostVisual;
+      GameApp.renderers.effects.DeathDissolveRenderer.drawDissolved(c,e,progress,v);
+    }
+    game.root.querySelectorAll('.game-field-ui,.game-overlay').forEach(e=>e.remove());
+  }
+  await new Promise(requestAnimationFrame);preview.syncGameFieldUi();
+  document.body.dataset.verification='PASS '+results.length+' checks';
+ } catch(e) {document.body.dataset.verification='FAIL '+e.stack;}
+});</script></head><body><main id="app"></main></body></html>

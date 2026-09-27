@@ -2,17 +2,42 @@
 GameApp.renderers.characters ??= {};
 GameApp.renderers.characters.GhostVisual = {
   draw(ctx, enemy, pose) {
-    if (pose.dissolve > 0) { GameApp.renderers.effects.DeathDissolveRenderer.drawShattered(ctx, enemy, pose.dissolve, this); return; }
+    if (pose.dissolve > 0) { GameApp.renderers.effects.DeathDissolveRenderer.drawDissolved(ctx, enemy, pose.dissolve, this); return; }
     const width = enemy.width;
     const height = enemy.height;
     const flutter = Math.sin((enemy.animation.time || 0) * 3.1) * height * 0.022;
     ctx.save();
-    const inheritedAlpha = ctx.globalAlpha;
+    const inheritedAlpha = ctx.globalAlpha * (enemy.visualHurtTimer > 0 && Math.sin(enemy.visualHurtTimer * 68) > 0 ? .48 : 1);
     ctx.translate(enemy.position.x + width / 2 + (pose.x || 0), enemy.position.y + height / 2 + (pose.y || 0));
     ctx.rotate(pose.rotation || 0);
     ctx.scale(pose.scaleX ?? 1, pose.scaleY ?? 1);
     const bodyAlpha = 1 - (pose.dissolve || 0);
     ctx.globalAlpha = inheritedAlpha * bodyAlpha;
+
+    if (enemy.kind === "runner2" || enemy.kind === "runner3") {
+      const sway = Math.sin((enemy.animation.time || 0) * 5) * width * .045;
+      ctx.fillStyle = enemy.color;
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = Math.max(1.5, 1.5 * (enemy.scale || 1));
+      ctx.lineCap = "round";
+      const antennas = enemy.kind === "runner3" ? [-1, 0, 1] : [0];
+      antennas.forEach((side) => {
+        const tipX = side * width * .3 + sway, tipY = -height * (side ? .46 : .51);
+        ctx.beginPath(); ctx.moveTo(side * width * .18, -height * .28);
+        ctx.quadraticCurveTo(side * width * .28, -height * .43, tipX, tipY);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(tipX, tipY, width * .075, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      });
+      const roundBody = ctx.createRadialGradient(-width * .16, -height * .15, 1, 0, height * .02, width * .58);
+      roundBody.addColorStop(0, enemy.kind === "runner3" ? "#f4ffd4" : "#d4ffdb"); roundBody.addColorStop(.45, enemy.color); roundBody.addColorStop(1, enemy.kind === "runner3" ? enemy.color : "#00a72c");
+      ctx.fillStyle = roundBody;
+      ctx.shadowColor = enemy.color; ctx.shadowBlur = 15;
+      ctx.beginPath(); ctx.arc(0, height * .05, width * .47, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      GameApp.renderers.effects.DeathDissolveRenderer.drawEye(ctx, enemy, pose, width, height);
+      ctx.restore();
+      return;
+    }
 
     // Силуэт без углов: купол плавно перетекает в волнистый низ.
     const body = ctx.createLinearGradient(-width / 2, -height / 2, width / 2, height / 2);
